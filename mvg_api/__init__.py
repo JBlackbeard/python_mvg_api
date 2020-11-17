@@ -3,15 +3,69 @@
 import requests
 import datetime
 from time import mktime
+import random
+from requests.adapters import HTTPAdapter
+from requests.packages.urllib3.util.retry import Retry
+import sys
+
 
 api_key = "5af1beca494712ed38d313714d4caff6"
-query_url_name = "https://www.mvg.de/api/fahrinfo/location/queryWeb?q={name}"  # for station names
-query_url_id = "https://www.mvg.de/api/fahrinfo/location/query?q={id}"  # for station ids
+# for station names
+query_url_name = "https://www.mvg.de/api/fahrinfo/location/queryWeb?q={name}"
+# for station ids
+query_url_id = "https://www.mvg.de/api/fahrinfo/location/query?q={id}"
 departure_url = "https://www.mvg.de/api/fahrinfo/departure/{id}?footway=0"
 nearby_url = "https://www.mvg.de/api/fahrinfo/location/nearby?latitude={lat}&longitude={lon}"
 routing_url = "https://www.mvg.de/api/fahrinfo/routing/?"
 interruptions_url = "https://www.mvg.de/.rest/betriebsaenderungen/api/interruptions"
 id_prefix = "de:09162:"
+HEADERS = [{"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_4), "
+            + "AppleWebKit/605.1.15 (KHTML, like Gecko) Version/13.1 Chrome/71.0.3578.98"},
+           {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64), "
+            + "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/74.0.3729.169 Safari/537.36"},
+           {"User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/44.0.2403.157 Safari/537.36"},
+           {"User-Agent":
+               "Mozilla/5.0 CK={} (Windows NT 6.1; WOW64; Trident/7.0; rv:11.0) like Gecko"},
+           {"User-Agent": "Mozilla/4.0 (compatible; MSIE 6.0; Windows NT 5.1; SV1)"},
+           {"User-Agent": "Mozilla/5.0 (Windows NT 6.1; WOW64; Trident/7.0; rv:11.0) like Gecko"},
+           {"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_12_6) AppleWebKit/603.3.8 (KHTML, like Gecko)"},
+           {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/70.0.3538.102 Safari/537.36 Edge/18.18363"},
+           {"User-Agent": "Mozilla/5.0 (Windows NT 5.1; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/60.0.3112.90 Safari/537.36"},
+           {"User-Agent": "Mozilla/4.0 (compatible; MSIE 9.0; Windows NT 6.1)"},
+           {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/78.0.3904.108 Safari/537.36"}
+           ]
+
+
+class TimeoutHTTPAdapter(HTTPAdapter):
+    def __init__(self, *args, **kwargs):
+        self.timeout = DEFAULT_TIMEOUT
+        if "timeout" in kwargs:
+            self.timeout = kwargs["timeout"]
+            del kwargs["timeout"]
+        super().__init__(*args, **kwargs)
+
+    def send(self, request, **kwargs):
+        timeout = kwargs.get("timeout")
+        if timeout is None:
+            kwargs["timeout"] = self.timeout
+        return super().send(request, **kwargs)
+
+
+DEFAULT_TIMEOUT = 10
+adapter = TimeoutHTTPAdapter(timeout=2.5)
+
+
+retries = Retry(
+    total=7,
+    status_forcelist=[408, 429, 500, 502, 503, 504, 509],
+    # backoff_factor: how long does the process sleep between requests:
+    # {backoff factor} * (2 ** ({number of total retries} - 1))
+    backoff_factor=30  # 30, 60, 120, 240, 480, 960
+)
+
+http = requests.Session()
+http.mount("https://", TimeoutHTTPAdapter(max_retries=retries))
+http.mount("http://", TimeoutHTTPAdapter(max_retries=retries))
 
 
 class ApiError(Exception):
@@ -20,6 +74,7 @@ class ApiError(Exception):
     :ivar code: status code returned by the API
     :ivar reason: response given by the api (optional)
     """
+
     def __init__(self, code, reason):
         self.code = code
         self.reason = reason
@@ -35,7 +90,7 @@ def _convert_id(old_id: int) -> str:
     return id_prefix + str(old_id)
 
 
-def _station_sanity_check(id:str):
+def _station_sanity_check(id: str):
     """
     New ID format has these specifications:
     starts with de
@@ -45,27 +100,32 @@ def _station_sanity_check(id:str):
     :return: Boolean on id sanity
     """
     split_id = id.split(":")
-    if not len(split_id)==3:
+    if not len(split_id) == 3:
         return False
-    if not split_id[0]=='de':
+    if not split_id[0] == 'de':
         return False
     return True
 
 
 def _perform_api_request(url):
-    resp = requests.get(
-            url,
-            headers={
-                'X-MVG-Authorization-Key': api_key,
-                'User-Agent': 'python-mvg-api/1 (+https://github.com/leftshift/python_mvg_api)',
-                'Accept': 'application/json'
-                }
-            )
+    resp = http.get(
+        url,
+        headers={
+            'X-MVG-Authorization-Key': api_key,
+            'User-Agent': random.choice(HEADERS).get('User-Agent'),
+            'Accept': 'application/json'
+        }
+    )
     if not resp.ok:
-        try:
-            raise ApiError(resp.status_code, resp.json())
-        except ValueError:
-            raise ApiError(resp.status_code)
+        print(
+            f"Bad response for url{url} with response code {resp.status_code}")
+        sys.exit(1)
+
+    #     try:
+    #         raise ApiError(resp.status_code, resp.json())
+    #     except ValueError:
+    #         raise ApiError(resp.status_code)
+
     return resp.json()
 
 
@@ -187,7 +247,8 @@ def get_locations(query):
 
     """
     try:
-        query = "{}{}".format(id_prefix, int(query))  # converts old style station id to new style station id
+        # converts old style station id to new style station id
+        query = "{}{}".format(id_prefix, int(query))
     except(ValueError):  # happens if it is a station name
         url = query_url_name.format(name=query)
     else:  # happens if it is a station id
@@ -249,7 +310,6 @@ def get_route(start, dest,
     url = routing_url
     options = []
 
-
     if isinstance(start, tuple) and len(start) == 2:
         options.append("fromLatitude=" + str(start[0]))
         options.append("fromLongitude=" + str(start[1]))
@@ -261,7 +321,6 @@ def get_route(start, dest,
         raise ValueError("A start must be given;\
                           either int station id, 'new style' string ids \
                           or a tuple with latitude and longitude")
-
 
     if isinstance(dest, tuple) and len(dest) == 2:
         options.append("toLatitude=" + str(dest[0]))
@@ -356,7 +415,8 @@ def get_departures(station_id):
             delay = departure['delay']
         else:
             delay = 0
-        departure[u'departureTimeMinutes'] = relative_time // datetime.timedelta(seconds=60) + delay
+        departure[u'departureTimeMinutes'] = relative_time // datetime.timedelta(
+            seconds=60) + delay
     return departures
 
 
