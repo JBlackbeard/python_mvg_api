@@ -9,14 +9,14 @@ from requests.packages.urllib3.util.retry import Retry
 import sys
 
 
-api_key = "5af1beca494712ed38d313714d4caff6"
+api_key = "apiKey=aklKa290LsadOLW"
 # for station names
 query_url_name = "https://www.mvg.de/api/fahrinfo/location/queryWeb?q={name}"
 # for station ids
 query_url_id = "https://www.mvg.de/api/fahrinfo/location/query?q={id}"
 departure_url = "https://www.mvg.de/api/fahrinfo/departure/{id}?footway=0"
 nearby_url = "https://www.mvg.de/api/fahrinfo/location/nearby?latitude={lat}&longitude={lon}"
-routing_url = "https://www.mvg.de/api/fahrinfo/routing/?"
+routing_url = f"https://www.mvg.de/api/fahrinfo/routing/?{api_key}&".format(api_key=api_key)
 interruptions_url = "https://www.mvg.de/.rest/betriebsaenderungen/api/interruptions"
 id_prefix = "de:09162:"
 HEADERS = [{"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_4), "
@@ -307,7 +307,7 @@ def get_route(start, dest,
     sbahn: bool, optional
         Specifies if the SBahn should be considered in the route
     """
-    url = routing_url
+    url = routing_url.format(api_key=api_key)
     options = []
 
     if isinstance(start, tuple) and len(start) == 2:
