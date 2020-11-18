@@ -16,7 +16,8 @@ query_url_name = "https://www.mvg.de/api/fahrinfo/location/queryWeb?q={name}"
 query_url_id = "https://www.mvg.de/api/fahrinfo/location/query?q={id}"
 departure_url = "https://www.mvg.de/api/fahrinfo/departure/{id}?footway=0"
 nearby_url = "https://www.mvg.de/api/fahrinfo/location/nearby?latitude={lat}&longitude={lon}"
-routing_url = f"https://www.mvg.de/api/fahrinfo/routing/?{api_key}&".format(api_key=api_key)
+routing_url = f"https://www.mvg.de/api/fahrinfo/routing/?{api_key}&".format(
+    api_key=api_key)
 interruptions_url = "https://www.mvg.de/.rest/betriebsaenderungen/api/interruptions"
 id_prefix = "de:09162:"
 HEADERS = [{"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_4), "
@@ -56,7 +57,7 @@ adapter = TimeoutHTTPAdapter(timeout=2.5)
 
 
 retries = Retry(
-    total=7,
+    total=3,
     status_forcelist=[408, 429, 500, 502, 503, 504, 509],
     # backoff_factor: how long does the process sleep between requests:
     # {backoff factor} * (2 ** ({number of total retries} - 1))
@@ -111,7 +112,7 @@ def _perform_api_request(url):
     resp = http.get(
         url,
         headers={
-            'X-MVG-Authorization-Key': api_key,
+            # 'X-MVG-Authorization-Key': api_key,
             'User-Agent': random.choice(HEADERS).get('User-Agent'),
             'Accept': 'application/json'
         }
